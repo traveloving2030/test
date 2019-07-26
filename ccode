@@ -1,0 +1,139 @@
+package main
+
+import (
+   "bytes"
+   "encoding/json"
+   "fmt"
+   "strconv"
+   "strings"
+   "time"
+
+   "github.com/hyperledger/fabric/core/chaincode/shim"
+   pb "github.com/hyperledger/fabric/protos/peer"
+)
+
+// SimpleChaincode example simple Chaincode implementation
+type SimpleChaincode struct {
+}
+
+type IoT struct { 
+   Name       string `json:"name"`    //the fieldtags are needed to keep case from bouncing around
+   Func1      string `json:"func1"`
+   Func2      string `json:"func2"`
+   Func3      string `json:"func3"`
+}
+
+// ===================================================================================
+// Main
+// ===================================================================================
+func main() {
+   err := shim.Start(new(SimpleChaincode))
+   if err != nil {
+      fmt.Printf("Error starting Simple chaincode: %s", err)
+   }
+}
+
+func (t *SimpleChaincode) Init(stub shim.ChaincodeStubInterface) pb.Response {
+   return shim.Success(nil)
+}
+
+func (t *SimpleChaincode) Invoke(stub shim.ChaincodeStubInterface) pb.Response {
+   function, args := stub.GetFunctionAndParameters()
+   fmt.Println("invoke is running " + function)
+
+   if function == "initLedger" {
+      return t.initLedger(stub, args)
+   }   else if function == "queryState" { 
+      return t.queryState(stub, args)
+   } else if function == "addIoT" { 
+      return t.addIoT(stub, args)
+   } else if function == "updateState" { 
+      return t.updateState(stub, args)
+   }
+
+   fmt.Println("invoke did not find func: " + function) //error
+   return shim.Error("Received unknown function invocation")
+}
+
+func (s *SmartContract) initLedger(APIstub shim.ChaincodeStubInterface) sc.Response {
+   iot := []IoT{
+      IoT{Name: "TV", Func1: "0", Func2: "0", Func3: "0"},
+      IoT{Name: "AirConditioner", Func1: "0", Func2: "0", Func3: "0"},
+   }
+
+   i := 0
+   for i < len(iot) {
+      fmt.Println("i is ", i)
+      IoTAsBytes, _ := json.Marshal(iot[i])
+      APIstub.PutState(iot.Name, IoTAsBytes) // key 값 넣는 방법
+      fmt.Println("Added", iot[i])
+      i = i + 1
+   }
+
+   return shim.Success(nil)
+}
+
+
+func (t *SimpleChaincode) queryState(stub shim.ChaincodeStubInterface, args []string) pb.Response {
+   var device_name, jsonResp string
+   var err error
+
+   if len(args) != 1 {
+      return shim.Error("Incorrect number of arguments. Expecting name of the device to query")
+   }
+
+   device_name = args[0]
+   valAsbytes, err := stub.GetState(device_name) 
+   if err != nil {
+      jsonResp = "{\"Error\":\"Failed to get state for " + device_name + "\"}"
+      return shim.Error(jsonResp)
+   } else if valAsbytes == nil {
+      jsonResp = "{\"Error\":\"Device does not exist: " + device_name + "\"}"
+      return shim.Error(jsonResp)
+   }
+
+   return shim.Success(valAsbytes)
+}
+
+func (s *SmartContract) addIoT(APIstub shim.ChaincodeStubInterface, args []string) sc.Response {
+
+   if len(args) != 4 {
+      return shim.Error("Incorrect number of arguments. Expecting 4")
+   }
+
+   var iot = IoT{Name: args[0], Func1: args[1], Func2: args[2], Func3: args[3], }
+
+   IoTAsBytes, _ := json.Marshal(iot)
+   err := APIstub.PutState(args[0], IoTAsBytes)
+   if err != nil {
+      return shim.Error(fmt.Sprintf("Failed to UpdateState: %s", args[0]))
+   }
+
+   return shim.Success(nil)
+}
+
+func (s *SmartContract) updateState(APIstub shim.ChaincodeStubInterface, args []string) sc.Response {
+
+   var device_name
+   
+   if len(args) != 4 {
+      return shim.Error("Incorrect number of arguments. Expecting 4")
+   }
+   
+ 
+   device_name=args[0]
+
+   IoTAsBytes, _ := APIstub.GetState(device_name) // 인자인 key값(args[0])에 대한 stateDB 내의 date를 보여준다
+
+   iot := IoT{}
+   json.Unmarshal(IoTAsBytes, &iot) // 전달받은 carAsBytes라는 JSON 형식의 데이터를 car 구조체 안의 값으로 집어넣음
+   iot.Func1 = args[1]
+   iot.Func2 = args[2]
+   iot.Func3 = args[3]
+
+
+   IoTAsBytes, _ = json.Marshal(iot)
+   APIstub.PutState(device_name, IoTAsBytes)
+
+   return shim.Success(nil)
+}
